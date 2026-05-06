@@ -1,22 +1,5 @@
 import { useEffect } from "react";
-
-const posts = [
-  {
-    href: "/blog/kak-chat-bot-uvelichivaet-prodazhi",
-    title: "Как чат-бот увеличивает продажи: 7 рабочих сценариев",
-    excerpt: "Практические сценарии, которые повышают конверсию заявки в оплату.",
-  },
-  {
-    href: "/blog/telegram-bot-dlya-zayavok",
-    title: "Telegram-бот для заявок: структура, этапы, ошибки",
-    excerpt: "Как выстроить бота так, чтобы он не просто отвечал, а собирал лиды.",
-  },
-  {
-    href: "/blog/integraciya-chat-bota-s-crm",
-    title: "Интеграция чат-бота с CRM: зачем нужна и как внедрить",
-    excerpt: "Разбираю, как связка бота и CRM влияет на скорость и качество продаж.",
-  },
-];
+import { blogPosts } from "@/generated/blogPosts";
 
 export default function Blog() {
   useEffect(() => {
@@ -46,16 +29,21 @@ export default function Blog() {
             </p>
           </div>
           <div className="grid gap-4">
-            {posts.map((post) => (
+            {blogPosts.map((post) => (
               <a
-                key={post.href}
-                href={post.href}
+                key={post.slug}
+                href={`/blog/${post.slug}`}
                 className="block rounded-2xl border border-white/[0.08] bg-[#0a0a12] p-6 hover:border-purple-400/35 transition-colors"
               >
                 <h2 className="text-xl font-semibold mb-2">{post.title}</h2>
-                <p className="text-white/55 text-[15px]">{post.excerpt}</p>
+                <p className="text-white/55 text-[15px]">{post.summary || "Новая статья в блоге."}</p>
               </a>
             ))}
+            {blogPosts.length === 0 && (
+              <div className="rounded-2xl border border-white/[0.08] bg-[#0a0a12] p-6 text-white/60 text-[15px]">
+                Пока нет опубликованных статей. После merge файлов в `content/drafts` публикация появится здесь автоматически.
+              </div>
+            )}
           </div>
         </div>
       </section>
