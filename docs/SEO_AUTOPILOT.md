@@ -28,7 +28,7 @@ GitHub -> Actions -> `SEO Draft Generator` -> `Run workflow`
 ## Модель
 
 По умолчанию workflow использует:
-- `AI_MODEL=openai/gpt-4.1-mini`
+- `AI_MODEL=anthropic/claude-3.5-sonnet`
 
 Можно сменить модель, изменив `AI_MODEL` в файле `.github/workflows/seo-drafts.yml`.
 

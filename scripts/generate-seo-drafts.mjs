@@ -61,6 +61,8 @@ function buildPrompt(items) {
 2) Выбери до 2 действительно полезных темы для бизнеса.
 3) Напиши 2 черновика статей в стиле автора: "по делу, простым языком, с пользой для бизнеса, без воды".
 4) Обязательно ссылайся на официальный источник в каждой статье.
+5) Пиши как редактор-практик: короткие абзацы, сильные подзаголовки, без канцеляризмов.
+6) Любые утверждения о цифрах и изменениях опирай только на источник из списка.
 
 Формат ответа: строго JSON-массив объектов:
 [
@@ -80,6 +82,9 @@ function buildPrompt(items) {
 - без выдуманных фактов
 - практическая польза для владельца бизнеса
 - естественно включи ключи: "разработка чат-ботов", "чат-бот для бизнеса", "чат-бот telegram для продаж"
+- стиль: экспертный, человеческий, без переспама SEO-фраз
+- добавь блок "Что сделать сегодня" в конце каждой статьи (3-5 шагов)
+- обязательно укажи раздел "Источник" с прямой ссылкой на официальный материал
 
 Источники:
 ${sourcesText}`;
@@ -96,7 +101,7 @@ async function generateWithAi(prompt) {
   const endpoint = useOpenRouter
     ? "https://openrouter.ai/api/v1/chat/completions"
     : "https://api.openai.com/v1/responses";
-  const model = process.env.AI_MODEL || (useOpenRouter ? "openai/gpt-4.1-mini" : "gpt-4.1-mini");
+  const model = process.env.AI_MODEL || (useOpenRouter ? "anthropic/claude-3.5-sonnet" : "gpt-4.1-mini");
 
   const headers = useOpenRouter
     ? {
@@ -113,13 +118,13 @@ async function generateWithAi(prompt) {
   const body = useOpenRouter
     ? {
         model,
-        temperature: 0.3,
+        temperature: 0.2,
         messages: [{ role: "user", content: prompt }],
       }
     : {
         model,
         input: prompt,
-        temperature: 0.3,
+        temperature: 0.2,
       };
 
   const res = await fetch(endpoint, {
