@@ -55,6 +55,7 @@ const REQUIRED_KEYWORDS = [
 ];
 
 const MIN_SEO_SCORE = 7;
+const MAX_DRAFTS_PER_RUN = 1;
 
 function stripHtml(input = "") {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -103,8 +104,8 @@ function buildPrompt(items) {
 
 Задача:
 1) Проанализируй источники ниже (официальные обновления Яндекса).
-2) Выбери до 2 действительно полезных темы для бизнеса.
-3) Напиши 2 черновика статей в стиле автора: "по делу, простым языком, с пользой для бизнеса, без воды".
+2) Выбери 1 действительно полезную тему для бизнеса.
+3) Напиши 1 черновик статьи в стиле автора: "по делу, простым языком, с пользой для бизнеса, без воды".
 4) Обязательно ссылайся на официальный источник в каждой статье.
 5) Пиши как редактор-практик: короткие абзацы, сильные подзаголовки, без канцеляризмов.
 6) Любые утверждения о цифрах и изменениях опирай только на источник из списка.
@@ -273,7 +274,7 @@ async function generateWithAi(prompt) {
 }
 
 function fallbackDrafts(items) {
-  return items.slice(0, 2).map((item, idx) => ({
+  return items.slice(0, MAX_DRAFTS_PER_RUN).map((item, idx) => ({
     title: `Разбор обновления Яндекса: ${item.title}`,
     slug: `yandex-update-${TODAY}-${idx + 1}`,
     summary: "Краткий разбор официального обновления Яндекса и его влияния на сайт бизнеса.",
@@ -349,7 +350,7 @@ async function run() {
 
   const created = [];
   const skipped = [];
-  for (const draft of drafts.slice(0, 2)) {
+  for (const draft of drafts.slice(0, MAX_DRAFTS_PER_RUN)) {
     const combinedText = [
       draft.title || "",
       draft.summary || "",

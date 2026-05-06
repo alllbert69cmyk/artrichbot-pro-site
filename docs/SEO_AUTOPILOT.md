@@ -37,7 +37,23 @@ GitHub -> Actions -> `SEO Draft Generator` -> `Run workflow`
 1. Открыть PR `bot/seo-drafts`
 2. Проверить факты, ссылки и тон
 3. Нажать Merge
-4. При необходимости перенести статью из `content/drafts` в блоговые страницы сайта
+4. Дальше публикация в блог идет автоматически по расписанию (каждые 4 дня в 07:00 МСК)
+
+## Автопубликация в блог + автодеплой на VPS
+
+После merge workflow `Publish Drafts to Blog`:
+- читает `content/drafts/*.md`,
+- обновляет `client/src/generated/blogPosts.ts`,
+- обновляет `client/public/sitemap.xml`,
+- собирает production build,
+- загружает статику на VPS в `/var/www/artrichbot`,
+- перезагружает `nginx`.
+
+Нужно добавить GitHub Secrets (Repository -> Settings -> Secrets and variables -> Actions):
+- `VPS_HOST` — IP сервера (например `95.81.102.64`)
+- `VPS_USER` — пользователь SSH (например `root`)
+- `VPS_SSH_KEY` — приватный SSH-ключ (содержимое файла, начиная с `-----BEGIN ...-----`)
+- `VPS_PORT` — порт SSH (обычно `22`)
 
 ## Важно
 
