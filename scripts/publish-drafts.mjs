@@ -24,10 +24,19 @@ function parseFrontmatter(content) {
     const [rawKey, ...rest] = line.split(":");
     if (!rawKey || rest.length === 0) continue;
     const key = rawKey.trim();
-    const value = rest.join(":").trim();
-    data[key] = value.replace(/^"(.*)"$/, "$1");
+    const valueRaw = rest.join(":").trim();
+    const unquoted = valueRaw.replace(/^"(.*)"$/, "$1");
+    if (unquoted.startsWith("[") && unquoted.endsWith("]")) {
+      try {
+        data[key] = JSON.parse(unquoted);
+        continue;
+      } catch {
+        // keep as string
+      }
+    }
+    data[key] = unquoted;
   }
-  return { data, body: body.trim() };
+  return { data, body: body.trimEnd() };
 }
 
 function escapeTemplate(value = "") {
@@ -39,12 +48,27 @@ function toIsoDate(dateStr = "") {
   return dateStr.slice(0, 10);
 }
 
+function serializeFrontmatterValue(value) {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  return `"${String(value ?? "").replace(/"/g, '\\"')}"`;
+}
+
+function toMarkdownWithFrontmatter(data, body) {
+  const orderedKeys = ["title", "slug", "date", "summary", "keywords", "source", "status", "published_at"];
+  const existingKeys = Object.keys(data);
+  const keys = [...orderedKeys.filter((k) => existingKeys.includes(k)), ...existingKeys.filter((k) => !orderedKeys.includes(k))];
+  const frontmatter = keys.map((key) => `${key}: ${serializeFrontmatterValue(data[key])}`).join("\n");
+  return `---\n${frontmatter}\n---\n\n${body.trim()}\n`;
+}
+
 async function buildGeneratedPosts() {
   await fs.mkdir(GENERATED_DIR, { recursive: true });
   await fs.mkdir(DRAFTS_DIR, { recursive: true });
 
   const files = (await fs.readdir(DRAFTS_DIR)).filter((f) => f.endsWith(".md")).sort();
   const posts = [];
+  const today = new Date().toISOString().slice(0, 10);
+  let newlyPublished = 0;
 
   for (const file of files) {
     const fullPath = path.join(DRAFTS_DIR, file);
@@ -54,6 +78,17 @@ async function buildGeneratedPosts() {
 
     const { data, body } = parsed;
     if (!data.slug || !data.title) continue;
+    const status = String(data.status || "draft").toLowerCase();
+
+    // Safety guard: publish each draft only once by flipping its status.
+    if (status === "draft") {
+      data.status = "published";
+      data.published_at = today;
+      newlyPublished += 1;
+      await fs.writeFile(fullPath, toMarkdownWithFrontmatter(data, body), "utf8");
+    } else if (status !== "published") {
+      continue;
+    }
 
     posts.push({
       slug: data.slug,
@@ -65,8 +100,14 @@ async function buildGeneratedPosts() {
     });
   }
 
+  const uniqueBySlug = new Map();
+  for (const post of posts) {
+    if (!uniqueBySlug.has(post.slug)) uniqueBySlug.set(post.slug, post);
+  }
+  const normalizedPosts = Array.from(uniqueBySlug.values());
+
   // newest first
-  posts.sort((a, b) => (a.date < b.date ? 1 : -1));
+  normalizedPosts.sort((a, b) => (a.date < b.date ? 1 : -1));
 
   const fileContent = `export type BlogPost = {
   slug: string;
@@ -78,7 +119,7 @@ async function buildGeneratedPosts() {
 };
 
 export const blogPosts: BlogPost[] = [
-${posts
+${normalizedPosts
   .map(
     (p) => `  {
     slug: "${escapeTemplate(p.slug)}",
@@ -94,7 +135,7 @@ ${posts
 `;
 
   await fs.writeFile(GENERATED_POSTS_PATH, fileContent, "utf8");
-  return posts;
+  return { posts: normalizedPosts, newlyPublished };
 }
 
 async function buildSitemap(posts) {
@@ -127,9 +168,9 @@ ${allUrls
 }
 
 async function run() {
-  const posts = await buildGeneratedPosts();
+  const { posts, newlyPublished } = await buildGeneratedPosts();
   await buildSitemap(posts);
-  console.log(`Published drafts: ${posts.length}`);
+  console.log(`Published now: ${newlyPublished}. Total visible posts: ${posts.length}.`);
 }
 
 run().catch((error) => {
