@@ -29,6 +29,25 @@ const BANNED_TOPIC_PATTERNS = [
   /\bазарт(ные|ных)? игр(ы|а)\b/iu,
 ];
 
+const ALLOWED_TOPIC_PATTERNS = [
+  /\bseo\b/iu,
+  /\bпоиск(овый|а|е|евая|овые)?\b/iu,
+  /\bяндекс(а|у|ом)?\b/iu,
+  /\bметрик(а|и|е|ой)\b/iu,
+  /\bвебмастер(а|е|ом)?\b/iu,
+  /\bчат-?бот(а|ы|ов|у|ом)?\b/iu,
+  /\btelegram\b/iu,
+  /\bcrm\b/iu,
+  /\bлид(ы|ов|а)?\b/iu,
+  /\bворонк(а|и|у|ой)\b/iu,
+  /\bконверси(я|и|ю|ей)\b/iu,
+  /\bавтоматизаци(я|и|ю|ей)\b/iu,
+  /\bпродаж(а|и|у|ей)\b/iu,
+  /\bаналитик(а|и|у|ой)\b/iu,
+  /\bсайт(а|у|ом|ы)?\b/iu,
+  /\bindексаци(я|и|ю|ей)\b/iu,
+];
+
 function stripHtml(input = "") {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -83,6 +102,7 @@ function buildPrompt(items) {
 6) Любые утверждения о цифрах и изменениях опирай только на источник из списка.
 7) ЖЕСТКИЙ ЗАПРЕТ: не писать и не упоминать темы политики, войны, выборов, протестов, санкций, религии, секса/18+, наркотиков, алкоголя, гемблинга, трэш-контента.
 8) Если источник затрагивает запрещенную тему — пропусти его и выбери другой.
+9) Пиши только в рамках whitelist-тем: SEO, Яндекс.Вебмастер, Яндекс.Метрика, индексация, чат-боты, Telegram-боты, CRM, лиды, воронка, конверсия, автоматизация продаж.
 
 Формат ответа: строго JSON-массив объектов:
 [
@@ -113,6 +133,10 @@ ${sourcesText}`;
 
 function hasBannedTopic(text = "") {
   return BANNED_TOPIC_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function hasAllowedTopic(text = "") {
+  return ALLOWED_TOPIC_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 async function generateWithAi(prompt) {
@@ -255,6 +279,10 @@ async function run() {
 
     if (hasBannedTopic(combinedText)) {
       console.warn(`[warn] Draft skipped by banned-topic filter: ${draft.title || "Untitled"}`);
+      continue;
+    }
+    if (!hasAllowedTopic(combinedText)) {
+      console.warn(`[warn] Draft skipped by whitelist filter: ${draft.title || "Untitled"}`);
       continue;
     }
 
