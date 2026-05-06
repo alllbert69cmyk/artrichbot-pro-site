@@ -85,30 +85,59 @@ function buildPrompt(items) {
 ${sourcesText}`;
 }
 
-async function generateWithOpenAI(prompt) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+async function generateWithAi(prompt) {
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+  const openAiApiKey = process.env.OPENAI_API_KEY;
 
-  const res = await fetch("https://api.openai.com/v1/responses", {
+  if (!openRouterApiKey && !openAiApiKey) return null;
+
+  // Priority: OpenRouter, fallback: OpenAI
+  const useOpenRouter = Boolean(openRouterApiKey);
+  const endpoint = useOpenRouter
+    ? "https://openrouter.ai/api/v1/chat/completions"
+    : "https://api.openai.com/v1/responses";
+  const model = process.env.AI_MODEL || (useOpenRouter ? "openai/gpt-4.1-mini" : "gpt-4.1-mini");
+
+  const headers = useOpenRouter
+    ? {
+        "content-type": "application/json",
+        authorization: `Bearer ${openRouterApiKey}`,
+        "HTTP-Referer": process.env.OPENROUTER_SITE_URL || "https://artrichbot.ru",
+        "X-Title": process.env.OPENROUTER_SITE_NAME || "ArtRichBot SEO Drafts",
+      }
+    : {
+        "content-type": "application/json",
+        authorization: `Bearer ${openAiApiKey}`,
+      };
+
+  const body = useOpenRouter
+    ? {
+        model,
+        temperature: 0.3,
+        messages: [{ role: "user", content: prompt }],
+      }
+    : {
+        model,
+        input: prompt,
+        temperature: 0.3,
+      };
+
+  const res = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      input: prompt,
-      temperature: 0.3,
-    }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`OpenAI error ${res.status}: ${errorText}`);
+    throw new Error(`${useOpenRouter ? "OpenRouter" : "OpenAI"} error ${res.status}: ${errorText}`);
   }
 
   const data = await res.json();
-  return data.output_text || "";
+  if (useOpenRouter) {
+    return data?.choices?.[0]?.message?.content || "";
+  }
+  return data?.output_text || "";
 }
 
 function fallbackDrafts(items) {
@@ -177,7 +206,7 @@ async function run() {
   const prompt = buildPrompt(uniqueItems);
 
   let drafts = null;
-  const aiResponseText = await generateWithOpenAI(prompt);
+  const aiResponseText = await generateWithAi(prompt);
   if (aiResponseText) {
     drafts = safeJsonParse(aiResponseText);
   }

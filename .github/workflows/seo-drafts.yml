@@ -24,6 +24,10 @@ jobs:
 
       - name: Generate SEO drafts
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_SITE_URL: "https://artrichbot.ru"
+          OPENROUTER_SITE_NAME: "ArtRichBot SEO Drafts"
+          AI_MODEL: "openai/gpt-4.1-mini"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node scripts/generate-seo-drafts.mjs
 

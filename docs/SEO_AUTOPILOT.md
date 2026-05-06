@@ -13,12 +13,24 @@
 
 GitHub -> Repository -> Settings -> Secrets and variables -> Actions -> New repository secret
 
+Рекомендуемый вариант (OpenRouter):
+- Name: `OPENROUTER_API_KEY`
+- Value: ваш OpenRouter API ключ
+
+Опционально (fallback):
 - Name: `OPENAI_API_KEY`
 - Value: ваш OpenAI API ключ
 
 ## Как запустить вручную
 
 GitHub -> Actions -> `SEO Draft Generator` -> `Run workflow`
+
+## Модель
+
+По умолчанию workflow использует:
+- `AI_MODEL=openai/gpt-4.1-mini`
+
+Можно сменить модель, изменив `AI_MODEL` в файле `.github/workflows/seo-drafts.yml`.
 
 ## Как принимать статьи
 
