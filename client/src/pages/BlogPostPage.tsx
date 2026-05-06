@@ -2,8 +2,8 @@ import { blogPosts } from "@/generated/blogPosts";
 import { useEffect } from "react";
 
 type Props = {
-  params: {
-    slug: string;
+  params?: {
+    slug?: string;
   };
 };
 
@@ -38,7 +38,13 @@ function markdownToHtml(markdown: string) {
 }
 
 export default function BlogPostPage({ params }: Props) {
-  const post = blogPosts.find((p) => p.slug === params.slug);
+  const urlSlug =
+    typeof window !== "undefined"
+      ? decodeURIComponent(window.location.pathname.replace(/\/+$/, "").split("/").pop() || "")
+      : "";
+  const routeSlug = decodeURIComponent((params?.slug || "").replace(/\/+$/, ""));
+  const resolvedSlug = routeSlug || urlSlug;
+  const post = blogPosts.find((p) => p.slug === resolvedSlug);
 
   useEffect(() => {
     if (!post) return;
