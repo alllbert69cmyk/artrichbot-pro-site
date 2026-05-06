@@ -48,6 +48,14 @@ const ALLOWED_TOPIC_PATTERNS = [
   /\bindексаци(я|и|ю|ей)\b/iu,
 ];
 
+const REQUIRED_KEYWORDS = [
+  "разработка чат-ботов",
+  "чат-бот для бизнеса",
+  "чат-бот telegram для продаж",
+];
+
+const MIN_SEO_SCORE = 7;
+
 function stripHtml(input = "") {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -137,6 +145,76 @@ function hasBannedTopic(text = "") {
 
 function hasAllowedTopic(text = "") {
   return ALLOWED_TOPIC_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function countWords(text = "") {
+  return text
+    .replace(/[#*`>[\]()/\\-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function seoScoreDraft(draft) {
+  const text = `${draft.title || ""}\n${draft.summary || ""}\n${draft.contentMarkdown || ""}`.toLowerCase();
+  const scoreParts = {
+    hasH1: /^#\s+/m.test(draft.contentMarkdown || ""),
+    h2Count: ((draft.contentMarkdown || "").match(/^##\s+/gm) || []).length,
+    hasSourceSection: /источник/i.test(draft.contentMarkdown || ""),
+    hasTodayChecklist: /что сделать сегодня/i.test(draft.contentMarkdown || ""),
+    wordCount: countWords(draft.contentMarkdown || ""),
+    keywordMatches: REQUIRED_KEYWORDS.filter((kw) => text.includes(kw)),
+    hasValidSourceUrl: /^https?:\/\/.+/.test(draft.sourceUrl || ""),
+    summaryLength: (draft.summary || "").length,
+  };
+
+  let score = 0;
+  if (scoreParts.hasH1) score += 1;
+  if (scoreParts.h2Count >= 3) score += 2;
+  if (scoreParts.hasSourceSection) score += 1;
+  if (scoreParts.hasTodayChecklist) score += 1;
+  if (scoreParts.wordCount >= 700 && scoreParts.wordCount <= 1400) score += 2;
+  if (scoreParts.keywordMatches.length >= 2) score += 1;
+  if (scoreParts.hasValidSourceUrl) score += 1;
+  if (scoreParts.summaryLength >= 90) score += 1;
+
+  return { score, scoreParts };
+}
+
+function tokenizeForSimilarity(text = "") {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-zа-я0-9\s]/gi, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
+  );
+}
+
+function jaccardSimilarity(aSet, bSet) {
+  if (aSet.size === 0 || bSet.size === 0) return 0;
+  let intersection = 0;
+  for (const v of aSet) if (bSet.has(v)) intersection += 1;
+  const union = aSet.size + bSet.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+async function loadExistingDraftSignatures() {
+  await fs.mkdir(DRAFTS_DIR, { recursive: true });
+  const files = await fs.readdir(DRAFTS_DIR);
+  const mdFiles = files.filter((f) => f.endsWith(".md"));
+  const signatures = [];
+
+  for (const file of mdFiles) {
+    const fullPath = path.join(DRAFTS_DIR, file);
+    const content = await fs.readFile(fullPath, "utf8");
+    const title = content.match(/title:\s*"(.*)"/)?.[1] || "";
+    const slug = content.match(/slug:\s*"(.*)"/)?.[1] || "";
+    const body = content.split("---").slice(2).join("---");
+    const tokens = tokenizeForSimilarity(`${title}\n${body}`.slice(0, 12000));
+    signatures.push({ file, title: title.toLowerCase(), slug: slug.toLowerCase(), tokens });
+  }
+
+  return signatures;
 }
 
 async function generateWithAi(prompt) {
@@ -241,6 +319,7 @@ function safeJsonParse(text) {
 async function run() {
   await fs.mkdir(DRAFTS_DIR, { recursive: true });
   await fs.mkdir(STATE_DIR, { recursive: true });
+  const existingSignatures = await loadExistingDraftSignatures();
 
   const allItems = [];
   for (const feedUrl of YANDEX_FEEDS) {
@@ -269,6 +348,7 @@ async function run() {
   }
 
   const created = [];
+  const skipped = [];
   for (const draft of drafts.slice(0, 2)) {
     const combinedText = [
       draft.title || "",
@@ -279,14 +359,60 @@ async function run() {
 
     if (hasBannedTopic(combinedText)) {
       console.warn(`[warn] Draft skipped by banned-topic filter: ${draft.title || "Untitled"}`);
+      skipped.push({ title: draft.title || "Untitled", reason: "banned-topic" });
       continue;
     }
     if (!hasAllowedTopic(combinedText)) {
       console.warn(`[warn] Draft skipped by whitelist filter: ${draft.title || "Untitled"}`);
+      skipped.push({ title: draft.title || "Untitled", reason: "outside-whitelist" });
+      continue;
+    }
+
+    const { score, scoreParts } = seoScoreDraft(draft);
+    if (score < MIN_SEO_SCORE) {
+      console.warn(`[warn] Draft skipped by SEO score (${score}/${MIN_SEO_SCORE}): ${draft.title || "Untitled"}`);
+      skipped.push({
+        title: draft.title || "Untitled",
+        reason: "seo-score",
+        score,
+        scoreParts,
+      });
       continue;
     }
 
     const slug = slugify(draft.slug || draft.title || `draft-${Date.now()}`);
+    const titleLower = (draft.title || "").toLowerCase().trim();
+    const draftTokens = tokenizeForSimilarity(`${draft.title || ""}\n${draft.contentMarkdown || ""}`.slice(0, 12000));
+
+    const exactDuplicate = existingSignatures.find(
+      (s) => s.slug === slug || (titleLower && s.title === titleLower)
+    );
+    if (exactDuplicate) {
+      console.warn(`[warn] Draft skipped by exact duplicate filter: ${draft.title || "Untitled"}`);
+      skipped.push({
+        title: draft.title || "Untitled",
+        reason: "duplicate-exact",
+        matchedFile: exactDuplicate.file,
+      });
+      continue;
+    }
+
+    const nearDuplicate = existingSignatures
+      .map((s) => ({ file: s.file, similarity: jaccardSimilarity(draftTokens, s.tokens) }))
+      .sort((a, b) => b.similarity - a.similarity)[0];
+    if (nearDuplicate && nearDuplicate.similarity >= 0.6) {
+      console.warn(
+        `[warn] Draft skipped by near-duplicate filter (${nearDuplicate.similarity.toFixed(2)}): ${draft.title || "Untitled"}`
+      );
+      skipped.push({
+        title: draft.title || "Untitled",
+        reason: "duplicate-near",
+        similarity: Number(nearDuplicate.similarity.toFixed(3)),
+        matchedFile: nearDuplicate.file,
+      });
+      continue;
+    }
+
     const filename = `${TODAY}-${slug}.md`;
     const outputPath = path.join(DRAFTS_DIR, filename);
     const markdown = `---
@@ -301,13 +427,20 @@ status: "draft"
 
 ${draft.contentMarkdown || ""}`;
     await fs.writeFile(outputPath, markdown, "utf8");
-    created.push({ filename, slug, title: draft.title || slug, source: draft.sourceUrl || "" });
+    created.push({
+      filename,
+      slug,
+      title: draft.title || slug,
+      source: draft.sourceUrl || "",
+      seoScore: score,
+      seoChecks: scoreParts,
+    });
   }
 
   const reportPath = path.join(STATE_DIR, `draft-report-${TODAY}.json`);
-  await fs.writeFile(reportPath, JSON.stringify({ date: TODAY, created }, null, 2), "utf8");
+  await fs.writeFile(reportPath, JSON.stringify({ date: TODAY, created, skipped, minSeoScore: MIN_SEO_SCORE }, null, 2), "utf8");
   if (created.length === 0) {
-    throw new Error("No safe drafts created: all candidates were filtered by banned-topic policy.");
+    throw new Error("No safe drafts created: all candidates were filtered by safety/whitelist/seo-score policy.");
   }
   console.log(`Created ${created.length} safe draft(s).`);
 }
