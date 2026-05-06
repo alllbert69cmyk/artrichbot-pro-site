@@ -11,6 +11,24 @@ const YANDEX_FEEDS = [
   "https://yandex.ru/blog/metrika/rss.xml",
 ];
 
+const BANNED_TOPIC_PATTERNS = [
+  /\bвойн(а|ы|е|ой|у|ы)\b/iu,
+  /\bполит(ика|ики|ический|ические|ических|ической)\b/iu,
+  /\bвыбор(ы|ов|ный|ная)\b/iu,
+  /\bсанкц(ия|ии|ий|ионный)\b/iu,
+  /\bпрезидент\b/iu,
+  /\bгосдум(а|ы|е)\b/iu,
+  /\bмитинг(и|ов)?\b/iu,
+  /\bпротест(ы|ов)?\b/iu,
+  /\bэротик(а|и|ой)\b/iu,
+  /\bсекс(уал|а|у|ом)?\b/iu,
+  /\bпорн(о|ограф|уха)\b/iu,
+  /\b18\+\b/iu,
+  /\bнаркот(ик|ики|иков)\b/iu,
+  /\bалкогол(ь|я|ем)\b/iu,
+  /\bазарт(ные|ных)? игр(ы|а)\b/iu,
+];
+
 function stripHtml(input = "") {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -63,6 +81,8 @@ function buildPrompt(items) {
 4) Обязательно ссылайся на официальный источник в каждой статье.
 5) Пиши как редактор-практик: короткие абзацы, сильные подзаголовки, без канцеляризмов.
 6) Любые утверждения о цифрах и изменениях опирай только на источник из списка.
+7) ЖЕСТКИЙ ЗАПРЕТ: не писать и не упоминать темы политики, войны, выборов, протестов, санкций, религии, секса/18+, наркотиков, алкоголя, гемблинга, трэш-контента.
+8) Если источник затрагивает запрещенную тему — пропусти его и выбери другой.
 
 Формат ответа: строго JSON-массив объектов:
 [
@@ -85,9 +105,14 @@ function buildPrompt(items) {
 - стиль: экспертный, человеческий, без переспама SEO-фраз
 - добавь блок "Что сделать сегодня" в конце каждой статьи (3-5 шагов)
 - обязательно укажи раздел "Источник" с прямой ссылкой на официальный материал
+- не допускай даже косвенного ухода в запрещенные темы
 
 Источники:
 ${sourcesText}`;
+}
+
+function hasBannedTopic(text = "") {
+  return BANNED_TOPIC_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 async function generateWithAi(prompt) {
@@ -221,6 +246,18 @@ async function run() {
 
   const created = [];
   for (const draft of drafts.slice(0, 2)) {
+    const combinedText = [
+      draft.title || "",
+      draft.summary || "",
+      draft.contentMarkdown || "",
+      draft.sourceUrl || "",
+    ].join("\n");
+
+    if (hasBannedTopic(combinedText)) {
+      console.warn(`[warn] Draft skipped by banned-topic filter: ${draft.title || "Untitled"}`);
+      continue;
+    }
+
     const slug = slugify(draft.slug || draft.title || `draft-${Date.now()}`);
     const filename = `${TODAY}-${slug}.md`;
     const outputPath = path.join(DRAFTS_DIR, filename);
@@ -241,7 +278,10 @@ ${draft.contentMarkdown || ""}`;
 
   const reportPath = path.join(STATE_DIR, `draft-report-${TODAY}.json`);
   await fs.writeFile(reportPath, JSON.stringify({ date: TODAY, created }, null, 2), "utf8");
-  console.log(`Created ${created.length} draft(s).`);
+  if (created.length === 0) {
+    throw new Error("No safe drafts created: all candidates were filtered by banned-topic policy.");
+  }
+  console.log(`Created ${created.length} safe draft(s).`);
 }
 
 run().catch((error) => {
