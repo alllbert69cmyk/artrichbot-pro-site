@@ -1,0 +1,41 @@
+name: SEO Draft Generator
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-drafts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate SEO drafts
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/generate-seo-drafts.mjs
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(seo): add AI-generated draft articles"
+          title: "chore(seo): новые черновики статей из официальных источников"
+          body: |
+            Автоматически созданные SEO-черновики.
+
+            Источник: официальные источники Яндекса (RSS).
+            Режим: draft + manual approve.
+          branch: bot/seo-drafts
+          delete-branch: true
